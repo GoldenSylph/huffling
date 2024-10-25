@@ -1,0 +1,89 @@
+// Cellular Automata - Rule 30
+
+#define function initState() nonpayable returns ()
+#define function iterateCells() nonpayable returns ()
+
+// Macro to initialize the automaton state in storage
+#define macro INIT_STATE = takes(0) returns(0) {
+    0x00 0x01 sstore      // Cell 0 -> Alive (1)
+    0x01 0x00 sstore      // Cell 1 -> Dead (0)
+    0x02 0x01 sstore      // Cell 2 -> Alive (1)
+    0x03 0x01 sstore      // Cell 3 -> Alive (1)
+    0x04 0x00 sstore      // Cell 4 -> Dead (0)
+}
+
+// Macro to apply Rule 30 to determine the next state of a cell based on neighbors
+// Rule 30 transition table:
+// 111 -> 0, 110 -> 0, 101 -> 0, 100 -> 1
+// 011 -> 1, 010 -> 1, 001 -> 1, 000 -> 0
+#define macro APPLY_RULE = takes(3) returns(1) {
+    // Fetch left, center, and right neighbors as input
+    dup3 dup3 dup3 add add 0x07 and
+    switch {
+        0x00 { 0x00 }  // 000 -> 0
+        0x01 { 0x01 }  // 001 -> 1
+        0x02 { 0x01 }  // 010 -> 1
+        0x03 { 0x01 }  // 011 -> 1
+        0x04 { 0x01 }  // 100 -> 1
+        0x05 { 0x00 }  // 101 -> 0
+        0x06 { 0x00 }  // 110 -> 0
+        0x07 { 0x00 }  // 111 -> 0
+    }
+}
+
+// Macro to calculate the next state for all cells in a single iteration
+#define macro ITERATE_CELLS = takes(0) returns(0) {
+    0x00             // Initialize cell index to 0
+    0x05             // Upper limit (5 cells, index 0 to 4)
+    loop_start:      // Start of the iteration loop
+
+        dup1         // Duplicate the current cell index
+
+        // Load left, center, and right neighbor states
+        dup1 0x01 sub sload     // Left neighbor
+        dup2 sload              // Center cell
+        dup1 0x01 add sload     // Right neighbor
+
+        // Apply Rule 30 to determine the next state
+        APPLY_RULE
+
+        // Store the new state in temporary storage (next generation)
+        swap1             // Place the result (next state) on top
+        0x10 add sstore   // Store in key + 0x10 to represent "next" generation
+
+        // Increment the cell index and continue to next cell
+        0x01 add
+        dup2 lt           // Check if current cell index < 5
+        loop_end jumpi    // If true, continue the loop
+
+    loop_end:          // End of the iteration loop
+
+    // Transfer the new generation back to the main state
+    0x00
+    0x05
+    store_start:
+        dup1 sload             // Load next-gen cell state
+        0x10 add sload         // Retrieve from temporary location
+        sstore                 // Overwrite the current state with next-gen
+
+        0x01 add               // Move to the next cell
+        dup2 lt loop_start jumpi // Repeat until all cells are updated
+
+    // Clean up stack
+    pop
+}
+
+#define macro MAIN() = takes (0) returns (0) {
+    // Identify which function is being called.
+    0x00 calldataload 0xE0 shr
+    dup1 __FUNC_SIG(initState) eq init jumpi
+    dup1 __FUNC_SIG(iterateCells) eq iterate jumpi
+
+    0x00 0x00 revert
+
+    init:
+        INIT_STATE()
+    iterate:
+        ITERATE_CELLS()
+
+}
